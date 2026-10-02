@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-import socket, random, logging
+import socket, random, logging, sys
 
 from protocol import Protocol
 from binary import byte2ports,mac_to_str,mac_to_bytes
@@ -22,6 +22,7 @@ class Network:
         self.ip_address = ip_address
 
         self.sequence_id = random.randint(0, 1000)
+        self.seen = set()
 
         self.header = Protocol.header["blank"].copy()
         self.header.update({
@@ -37,7 +38,12 @@ class Network:
 
         # Receiving socket
         self.rs = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.rs.bind((Network.BROADCAST_ADDR, Network.UDP_RECEIVE_FROM_PORT))
+        if sys.platform == 'darwin':
+            # macOS cannot bind 255.255.255.255; wildcard + SO_REUSEADDR still gets broadcasts
+            self.rs.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.rs.bind(('', Network.UDP_RECEIVE_FROM_PORT))
+        else:
+            self.rs.bind((Network.BROADCAST_ADDR, Network.UDP_RECEIVE_FROM_PORT))
         self.rs.settimeout(10)
 
     def send(self, op_code, payload):
@@ -55,15 +61,24 @@ class Network:
 
     def receive(self):
         try:
-            data, addr = self.rs.recvfrom(1500)
-            data = Protocol.decode(data)
-            logger.debug('Receive Packet: ' + data.hex())
-            header, payload = Protocol.split(data)
-            header, payload = Protocol.interpret_header(header), Protocol.interpret_payload(payload)
-            logger.debug('Received Header:  ' + str(header))
-            logger.debug('Received Payload: ' + str(payload))
-            self.header['token_id'] = header['token_id']
-            return header, payload
+            while True:
+                data, addr = self.rs.recvfrom(1500)
+                # broadcast replies arrive once per interface; drop copies of packets we already returned
+                if data in self.seen:
+                    continue
+                self.seen.add(data)
+                data = Protocol.decode(data)
+                logger.debug('Receive Packet: ' + data.hex())
+                header, payload = Protocol.split(data)
+                header, payload = Protocol.interpret_header(header), Protocol.interpret_payload(payload)
+                # skip stale replies left in the buffer by earlier queries
+                if header['sequence_id'] != self.sequence_id:
+                    logger.debug('Skip reply for sequence %d (expected %d)' % (header['sequence_id'], self.sequence_id))
+                    continue
+                logger.debug('Received Header:  ' + str(header))
+                logger.debug('Received Payload: ' + str(payload))
+                self.header['token_id'] = header['token_id']
+                return header, payload
         except:
             raise ConnectionProblem()
 

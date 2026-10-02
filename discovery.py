@@ -1,9 +1,11 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import random
 import logging
 import argparse
-import netifaces
+import json
+import sys
+import ifaces
 
 from protocol import Protocol
 from network import Network, ConnectionProblem
@@ -16,9 +18,7 @@ class InterfaceProblem(Exception):
 
 def discover_switches(interface=None):
     if interface is None:
-        interfaces = netifaces.interfaces()
-        if "lo" in interfaces:
-            interfaces.remove("lo")
+        interfaces = [i for i in ifaces.interfaces() if not i.startswith('lo')]
         if len(interfaces) > 1:
             msg = ["more than 1 interface. Use -i or --interface to specify the name"]
             msg.append("Interfaces:")
@@ -27,16 +27,16 @@ def discover_switches(interface=None):
             raise InterfaceProblem("\n".join(msg))
 
     settings = []
-    addrs = netifaces.ifaddresses(interface)
+    addrs = ifaces.ifaddresses(interface)
     logger.debug("addrs:" + repr(addrs))
-    if netifaces.AF_INET not in addrs:
+    if ifaces.AF_INET not in addrs:
         raise InterfaceProblem("not AF_INET address")
-    if netifaces.AF_LINK not in addrs:
+    if ifaces.AF_LINK not in addrs:
         raise InterfaceProblem("not AF_LINK address")
 
-    mac = addrs[netifaces.AF_LINK][0]['addr']
+    mac = addrs[ifaces.AF_LINK][0]['addr']
     # take first address of interface
-    addr = addrs[netifaces.AF_INET][0]
+    addr = addrs[ifaces.AF_INET][0]
     if 'broadcast' not in addr or 'addr' not in addr:
         raise InterfaceProblem("no addr or broadcast for address")
     ip = addr['addr']
@@ -63,16 +63,21 @@ def main():
     try:
         switches = discover_switches(args.interface)
     except InterfaceProblem as e:
-        print("Error:", e)
+        print("Error:", e, file=sys.stderr)
+        sys.exit(1)
     else:
+        results = []
         for ip, mac, header, payload in switches:
+            entry = {
+                'host_ip': ip,
+                'host_mac': mac,
+                'switch': {name: value for id, name, value in payload},
+            }
             if args.command:
-                p = {x[1]: x[2] for x in payload}
-                cmd = f"./smrt.py --username admin --password admin --host-mac={mac} --ip-address={ip} --switch-mac {p['mac']}"
-                print(cmd)
-            else:
-                print(ip, mac, *payload, sep="\n")
-                print("-"*16)
+                p = entry['switch']
+                entry['command'] = f"./smrt.py --username admin --password admin --host-mac={mac} --ip-address={ip} --switch-mac {p['mac']}"
+            results.append(entry)
+        print(json.dumps(results, indent=2, default=str))
 
 if __name__ == "__main__":
     main()

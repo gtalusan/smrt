@@ -58,6 +58,19 @@ class Protocol:
     READ5:  'READ5'
     }
 
+    # port admin state
+    PORT_STATUS = {0: 'disabled', 1: 'enabled'}
+    # link speed codes: (mbps, duplex); 0 = no link, 1 = Auto (configured only)
+    SPEED_CODES = {
+        0: (0, 'none'),
+        1: (None, None),
+        2: (10, 'half'),
+        3: (10, 'full'),
+        4: (100, 'half'),
+        5: (100, 'full'),
+        6: (1000, 'full'),
+    }
+
     sequences = {
     # name      ->switch    switch->
     'login/change': (LOGIN,     RETURN),
@@ -77,12 +90,13 @@ class Protocol:
         9:     ('bool',  'dhcp'),
         10:    ('dec',   'num_ports'),
         13:    ('bool',  'v4'),
+        14:    ('bool',  'v6'),
         512:   ('str',   'username'),
         514:   ('str',   'password'),
         2304:  ('action','save'),
         2305:  ('action','get_token_id'),
         4352:  ('bool',  'igmp_snooping'),
-        4096:  ('hex',   'ports'),
+        4096:  ('ports', 'ports'),
         4608:  ('hex',   'trunk'),
         8192:  ('hex',   'mtu_vlan'),
         8704:  ('hex',   'vlan_enabled'),
@@ -171,13 +185,46 @@ class Protocol:
         elif kind == 'dec':
             value = int.from_bytes(value, 'big')
         elif kind == 'vlan':
-            value = list(struct.unpack("!hii", value[:10]) + (value[10:-1].decode('ascii'), ))
-            value[1] = byte2ports(value[1])
-            value[2] = byte2ports(value[2])
+            vlan_num, member_mask, tagged_mask = struct.unpack("!hii", value[:10])
+            value = {
+                'vlan': vlan_num,
+                'members': byte2ports(member_mask),
+                'tagged': byte2ports(tagged_mask),
+                'name': value[10:-1].decode('ascii'),
+            }
         elif kind == 'pvid':
-                value = struct.unpack("!bh", value) if value else None
+            if value:
+                port, pvid_num = struct.unpack("!bh", value)
+                value = {'port': port, 'pvid': pvid_num}
+        elif kind == 'ports':
+            # 7 bytes: port, status, lag, speed_configured, speed_actual, flow_control_configured, flow_control_actual
+            port, status, lag, speed_cfg, speed_actual, fc_cfg, fc_actual = struct.unpack("!BBBBBBB", value)
+            speed_configured, duplex_configured = Protocol.SPEED_CODES.get(speed_cfg, (speed_cfg, None))
+            actual_mbps, actual_duplex = Protocol.SPEED_CODES.get(speed_actual, (speed_actual, None))
+            value = {
+                'port': port,
+                'status': Protocol.PORT_STATUS.get(status, status),
+                'lag': lag,
+                'speed_configured': speed_configured,
+                'duplex_configured': duplex_configured,
+                'speed_actual': actual_mbps,
+                'duplex_actual': actual_duplex,
+                'flow_control_configured': 'on' if fc_cfg else 'off',
+                'flow_control_actual': 'on' if fc_actual else 'off',
+            }
         elif kind == 'stat':
-            value = struct.unpack("!bbbiiii", value)
+            port, status, speed, tx_good, tx_bad, rx_good, rx_bad = struct.unpack("!bbbIIII", value)
+            mbps, duplex = Protocol.SPEED_CODES.get(speed, (speed, None))
+            value = {
+                'port': port,
+                'status': Protocol.PORT_STATUS.get(status, status),
+                'speed': mbps,
+                'duplex': duplex,
+                'tx_good': tx_good,
+                'tx_bad': tx_bad,
+                'rx_good': rx_good,
+                'rx_bad': rx_bad,
+            }
         elif kind == 'bool':
             if   len(value) == 0:
                 pass
