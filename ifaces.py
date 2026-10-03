@@ -10,10 +10,17 @@ if sys.platform == 'linux':
 else:
     AF_LINK = 18  # AF_LINK (macOS/BSD)
 
-class Sockaddr(ctypes.Structure):
-    _fields_ = [('sa_len', ctypes.c_uint8),
-                ('sa_family', ctypes.c_uint8),
-                ('sa_data', ctypes.c_char * 14)]
+if sys.platform == 'linux':
+    # Linux sockaddrs: 16-bit family at offset 0, no length byte
+    class Sockaddr(ctypes.Structure):
+        _fields_ = [('sa_family', ctypes.c_uint16),
+                    ('sa_data', ctypes.c_char * 14)]
+else:
+    # macOS/BSD sockaddrs: length byte, then family byte
+    class Sockaddr(ctypes.Structure):
+        _fields_ = [('sa_len', ctypes.c_uint8),
+                    ('sa_family', ctypes.c_uint8),
+                    ('sa_data', ctypes.c_char * 14)]
 
 class SockaddrDl(ctypes.Structure):
     _fields_ = [('sdl_len', ctypes.c_uint8),
