@@ -1,0 +1,34 @@
+services:
+  smrt:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        SMRT_REPO: https://github.com/gtalusan/smrt.git
+        SMRT_REF: master
+    image: docker.io/gtalusan/tplink-smrt:latest
+    # discovery AND switch replies are UDP broadcast on 29808/29809 —
+    # host networking is mandatory (Linux hosts only)
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      SCHEDULE: "*/7 * * * *"
+      RUN_ONCE: "1"
+      LOGLEVEL: INFO
+      INTERFACE: ""               # optional: pin the LAN interface
+      # MQTT broker (127.0.0.1 = broker on the same host)
+      MQTT_HOST: 127.0.0.1
+      MQTT_PORT: "1883"
+      MQTT_USERNAME: ""
+      MQTT_PASSWORD: ""           # plaintext in compose, like the switch passwords below
+      MQTT_TOPIC_BASE: smrt
+      MQTT_QOS: "1"
+      MQTT_RETAIN: "0"
+      # Switch credentials keyed by MAC as reported by discovery
+      # (case/separators in the keys don't matter). Example with
+      # multiple switches and differing credentials:
+      # TP_CREDENTIALS: '{"0c:80:63:02:1d:b8": {"username": "admin", "password": "hunter2"}, "b0:a7:b9:75:d8:6d": {"username": "admin", "password": "admin"}}'
+      TP_CREDENTIALS: '{}'
+      DEFAULT_USERNAME: admin
+      DEFAULT_PASSWORD: ""        # empty = switches outside the map are skipped
+      TZ: America/Toronto
