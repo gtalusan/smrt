@@ -12,7 +12,12 @@ services:
     network_mode: host
     restart: unless-stopped
     environment:
-      SCHEDULE: "*/7 * * * *"
+      # */12 divides 60 evenly, so ticks are uniformly 12 min apart with no
+      # hour-boundary gap (cron */N resets each hour; non-divisors like 7
+      # leave a 60 mod N gap at the top of the hour — a 4-min tick for */7).
+      # The entrypoint also supports SCHEDULE=loop + POLL_INTERVAL for a
+      # continuous period that stays off any wall-clock grid.
+      SCHEDULE: "*/12 * * * *"
       RUN_ONCE: "1"
       LOGLEVEL: INFO
       INTERFACE: ""               # optional: pin the LAN interface

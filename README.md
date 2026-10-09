@@ -6,10 +6,11 @@ on Linux or Mac OS X. This tool is written in Python.
 Supposedly supported switches:
 
 * TL-SG105E (tested)
+* TL-SG105PE (tested)
 * TL-SG108E (tested)
 * TL-SG108PE
 * TL-SG1016DE
-* TL-SG1024DE
+* TL-SG1024DE (tested)
 
 ## Discover switches
 
@@ -305,4 +306,72 @@ $ smrt --vlan 130 --vlan_name "vlan_test_3" --vlan_member 1,4,5,6 --vlan_tagged 
     {"port": 8, "pvid": 90}
   ]
 }
+```
+
+## Docker
+
+`docker/` contains a minimal container (Alpine + Python 3 + jq +
+mosquitto-clients) that discovers the switches on a schedule and publishes
+per-port stats to MQTT.
+
+### Build
+
+The image clones this repo from GitHub at build time — push your changes
+first. Build args `SMRT_REPO` (default `https://github.com/gtalusan/smrt.git`)
+and `SMRT_REF` (default `master`) select the source.
+
+```
+$ docker buildx build --platform linux/amd64,linux/arm64 \
+    -f docker/Dockerfile -t docker.io/gtalusan/tplink-smrt:latest --push .
+```
+
+Multi-platform builds need a docker-container driver builder:
+
+```
+$ docker buildx create --name multiarch --driver docker-container --bootstrap --use
+```
+
+### Run
+
+`docker/docker-compose.yml` deploys with `network_mode: host` — required,
+because discovery and the switches' replies are UDP broadcast on ports
+29808/29809.
+
+Environment variables:
+
+* `SCHEDULE` — crontab expression, default `*/12 * * * *` (a divisor of 60,
+  so ticks are uniformly 12 minutes apart; cron `*/N` with non-divisors
+  like `*/7` leaves a shorter gap at the top of each hour). The special
+  value `loop` runs the tick continuously, sleeping `POLL_INTERVAL` seconds
+  (default 420) between runs — uniform spacing off the wall-clock grid.
+* `RUN_ONCE` — run one tick immediately at startup, default `1`.
+* `INTERFACE` — optional; pin the LAN interface used for discovery.
+  Otherwise the default-route interface is tried first, then the rest.
+* `MQTT_HOST` / `MQTT_PORT` — broker, default `127.0.0.1:1883`.
+* `MQTT_USERNAME` / `MQTT_PASSWORD` — broker credentials, if needed.
+* `MQTT_TOPIC_BASE` — topic prefix, default `smrt`.
+* `MQTT_QOS` / `MQTT_RETAIN` — publish QoS (default `1`) and retain
+  (default `0`).
+* `TP_CREDENTIALS` — JSON mapping switch MAC to credentials:
+  `'{"0c:80:63:02:1d:b8": {"username": "admin", "password": "hunter2"}}'`
+  (key case and separators are ignored). Switches not in the map fall back
+  to `DEFAULT_USERNAME`/`DEFAULT_PASSWORD`; switches with no credentials
+  anywhere are skipped with a warning.
+* `DEFAULT_USERNAME` / `DEFAULT_PASSWORD` — fallback credentials.
+* `LOGLEVEL`, `TZ`.
+
+Each tick: discover the switches, query each switch's `stats`, and publish
+one MQTT message per port with traffic history:
+
+```
+smrt/<switch-mac>/stats/<port>
+```
+
+with the raw stats object as the JSON payload (`port`, `status`, `speed`,
+`duplex`, `tx_good`, `tx_bad`, `rx_good`, `rx_bad` — cumulative packet
+counters). Leave `MQTT_HOST` unset for a dry run that logs the would-be
+publishes.
+
+```
+$ docker compose -f docker/docker-compose.yml up -d
 ```
