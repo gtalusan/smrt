@@ -10,7 +10,13 @@ Supposedly supported switches:
 * TL-SG108E (tested)
 * TL-SG108PE
 * TL-SG1016DE
-* TL-SG1024DE (tested)
+* TL-SG1024DE (tested: v3.0, v7.0)
+
+Newer firmware variants may send payload fields that aren't in the protocol
+table (e.g. TL-SG1024DE v7.0 discovery replies add ids 15 and 16). Unknown
+fields are skipped with a warning in the log instead of failing the query, so
+unfamiliar firmware still works — those fields just don't appear in the
+output.
 
 ## Discover switches
 
@@ -19,6 +25,11 @@ Supposedly supported switches:
 ```
 $ ./discovery.py
 ```
+
+Discovery waits for replies until the receive timeout (10 s), then prints
+every switch it heard from. A reply that can't be parsed — for example one
+from a switch running newer firmware — is logged and skipped, and never ends
+the run: the remaining switches are still found.
 
 ### Multiple interfaces
 
@@ -126,7 +137,10 @@ $ ./smrt.py --username admin --password admin --host-mac=ba.ff.ee.ff.ac.ee --ip-
 }
 ```
 
-Note: not all actions are of interest. Some TP-link code (13: "v4", 14: "v6", 8707: "vlan_filler") correspond to unknown codes but are presents in output, so must be presents in code/command list.
+Note: not all actions are of interest. Some TP-Link codes (13: "v4", 14: "v6",
+8707: "vlan_filler") are present in output but have no meaningful
+interpretation. Codes that aren't in the protocol table at all are skipped
+with a warning instead of failing the query.
 
 ### vlan
 

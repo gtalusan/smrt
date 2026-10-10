@@ -60,27 +60,33 @@ class Network:
         self.ss.sendto(packet, (Network.BROADCAST_ADDR, Network.UDP_SEND_TO_PORT))
 
     def receive(self):
-        try:
-            while True:
+        while True:
+            try:
                 data, addr = self.rs.recvfrom(1500)
-                # broadcast replies arrive once per interface; drop copies of packets we already returned
-                if data in self.seen:
-                    continue
-                self.seen.add(data)
+            except socket.timeout:
+                raise ConnectionProblem()
+            # broadcast replies arrive once per interface; drop copies of packets we already returned
+            if data in self.seen:
+                continue
+            self.seen.add(data)
+            try:
                 data = Protocol.decode(data)
                 logger.debug('Receive Packet: ' + data.hex())
                 header, payload = Protocol.split(data)
                 header, payload = Protocol.interpret_header(header), Protocol.interpret_payload(payload)
-                # skip stale replies left in the buffer by earlier queries
-                if header['sequence_id'] != self.sequence_id:
-                    logger.debug('Skip reply for sequence %d (expected %d)' % (header['sequence_id'], self.sequence_id))
-                    continue
-                logger.debug('Received Header:  ' + str(header))
-                logger.debug('Received Payload: ' + str(payload))
-                self.header['token_id'] = header['token_id']
-                return header, payload
-        except:
-            raise ConnectionProblem()
+            except Exception as e:
+                # one unparseable reply (e.g. an unknown firmware variant)
+                # must not abort the rest of the discovery run
+                logger.warning('unparseable reply from %s: %s', addr, e)
+                continue
+            # skip stale replies left in the buffer by earlier queries
+            if header['sequence_id'] != self.sequence_id:
+                logger.debug('Skip reply for sequence %d (expected %d)' % (header['sequence_id'], self.sequence_id))
+                continue
+            logger.debug('Received Header:  ' + str(header))
+            logger.debug('Received Payload: ' + str(payload))
+            self.header['token_id'] = header['token_id']
+            return header, payload
 
     def query(self, op_code, payload):
         self.send(op_code, payload)

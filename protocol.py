@@ -1,6 +1,9 @@
 import struct
+import logging
 from ipaddress import ip_address
 from binary import byte2ports,mac_to_str
+
+logger = logging.getLogger(__name__)
 
 class Protocol:
     PACKET_END = b'\xff\xff\x00\x00'
@@ -150,13 +153,20 @@ class Protocol:
         while len(payload) > len(Protocol.PACKET_END):
             dtype, dlen = struct.unpack('!hh', payload[0:4])
             data = payload[4:4+dlen]
+            payload = payload[4+dlen:]
+            if dtype not in Protocol.ids_tp:
+                # newer firmwares add fields we don't know (e.g. SG1024DE
+                # v7.0 discovery adds ids 15/16); skip them so the rest of
+                # the payload still parses
+                logger.warning('skipping unknown payload id %d (%d bytes: %s)',
+                               dtype, dlen, data.hex())
+                continue
             results.append( (
                 dtype,
                 Protocol.ids_tp[dtype][1],
                 Protocol.interpret_value(data, Protocol.ids_tp[dtype][0])
                 )
             )
-            payload = payload[4+dlen:]
         return results
 
     def analyze(data):
