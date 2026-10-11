@@ -372,19 +372,25 @@ Environment variables:
   to `DEFAULT_USERNAME`/`DEFAULT_PASSWORD`; switches with no credentials
   anywhere are skipped with a warning.
 * `DEFAULT_USERNAME` / `DEFAULT_PASSWORD` — fallback credentials.
+* `DISCOVER` — set to `1` to also run UDP discovery and query switches not
+  listed in `TP_CREDENTIALS` (adds ~10s per tick). Off by default: the
+  credentials map already enumerates the switches, so discovery is skipped.
 * `LOGLEVEL`, `TZ`.
 
-Each tick: discover the switches, query each switch's `stats`, and publish
-one MQTT message per port with traffic history:
+Each tick: wave-batched queries over a single UDP socket pair — one wave of
+token requests to every switch, one wave of logins, one wave of stats
+queries — then one MQTT connection publishes one message per port with
+traffic history:
 
 ```
 smrt/<switch-mac>/stats/<port>
 ```
 
-with the raw stats object as the JSON payload (`port`, `status`, `speed`,
-`duplex`, `tx_good`, `tx_bad`, `rx_good`, `rx_bad` — cumulative packet
-counters). Leave `MQTT_HOST` unset for a dry run that logs the would-be
-publishes.
+Payload is a single-line JSONL object (`port`, `status`, `speed`, `duplex`,
+`tx_good`, `tx_bad`, `rx_good`, `rx_bad` — cumulative packet counters),
+parseable by both JSON and JSONL consumers. Leave `MQTT_HOST` unset for a
+dry run that logs the would-be publishes. A tick with 5 switches takes
+~2 seconds.
 
 ```
 $ docker compose -f docker/docker-compose.yml up -d

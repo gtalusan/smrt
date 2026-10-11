@@ -16,6 +16,7 @@ COPY --from=src /src/smrt.py /src/discovery.py /src/network.py /src/protocol.py 
                 /src/binary.py /src/ifaces.py /src/loglevel.py /src/tp_analyse.py \
                 /app/
 COPY docker/run.sh /app/run.sh
+COPY docker/runner.py /app/runner.py
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /app/run.sh /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
