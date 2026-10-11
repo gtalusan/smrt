@@ -137,10 +137,11 @@ $ ./smrt.py --username admin --password admin --host-mac=ba.ff.ee.ff.ac.ee --ip-
 }
 ```
 
-Note: not all actions are of interest. Some TP-Link codes (13: "v4", 14: "v6",
-8707: "vlan_filler") are present in output but have no meaningful
-interpretation. Codes that aren't in the protocol table at all are skipped
-with a warning instead of failing the query.
+Note: not all actions are of interest. Some TP-Link codes (13: "auto_save",
+14: "is_factory", 15: "flash_type", 8707: "vlan_filler") are present in output
+but have no meaningful interpretation. Codes that aren't in the protocol table
+at all (e.g. id 16 from TL-SG1024DE v7.0 discovery replies) are skipped with a
+warning instead of failing the query.
 
 ### vlan
 
